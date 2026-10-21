@@ -11,6 +11,7 @@ const CSS = `
 #cvlDlg .cvl-stage{padding:14px;overflow:auto;border-right:1px solid var(--hair)}
 #cvlDlg canvas{max-width:100%;height:auto;display:block;border-radius:6px;cursor:crosshair;background:#fff}
 #cvlDlg .cvl-side{padding:14px;overflow:auto;display:grid;gap:10px;align-content:start;font-size:.8rem}
+#cvlDlg #cvlDrop{display:grid;gap:6px;place-content:center;text-align:center;min-height:380px;border:2px dashed var(--hair-strong);border-radius:10px;cursor:pointer;color:var(--muted)}#cvlDlg #cvlDrop b{color:var(--ink);font-size:1rem}#cvlDlg #cvlDrop.over,#cvlDlg #cvlDrop:hover{border-color:var(--violet);background:color-mix(in srgb,var(--violet) 10%,transparent)}
 #cvlDlg h3{margin:0;font-size:.95rem}
 #cvlDlg .sw{display:flex;flex-wrap:wrap;gap:6px}
 #cvlDlg .sw label{display:flex;align-items:center;gap:4px;padding:3px 6px;border:1px solid var(--hair);border-radius:7px;cursor:pointer}
@@ -23,14 +24,14 @@ const CSS = `
 #cvlDlg .tiny{font-size:.7rem;padding:2px 6px;height:auto}
 `;
 const $ = (id) => document.getElementById(id);
-let img, bmp, cal, clickMode = null, result = null, onDone, picked = [];
+let curFile = null, img, bmp, cal, clickMode = null, result = null, onDone, picked = [];
 
 function ensure() {
   if ($('cvlDlg')) return;
   const st = document.createElement('style'); st.textContent = CSS; document.head.append(st);
   const d = document.createElement('dialog'); d.id = 'cvlDlg';
   d.innerHTML = `<div class="cvl">
-  <div class="cvl-stage"><canvas id="cvlCv"></canvas><p class="hint">Dica: cole uma imagem com ⌘V / Ctrl+V a qualquer momento.</p></div>
+  <div class="cvl-stage"><div id="cvlDrop" tabindex="0"><b>Arraste a imagem do gráfico aqui</b><span>ou clique pra escolher um arquivo · ou cole com ⌘V / Ctrl+V</span><span class="hint">PNG ou JPG · gráfico de linha ou barras</span></div><input id="cvlFile" type="file" accept="image/*" hidden><canvas id="cvlCv" hidden></canvas><button class="tiny" id="cvlOther" hidden>Trocar imagem…</button><p class="hint">Dica: cole uma imagem com ⌘V / Ctrl+V a qualquer momento.</p></div>
   <div class="cvl-side">
     <h3>Converter imagem em gráfico</h3>
     <p class="hint">Leitura por pixel, direto no navegador — nada é enviado pra servidor.</p>
@@ -66,9 +67,18 @@ function ensure() {
   $('cvlC1').onclick = mode('c1', 'Clique na altura da 1ª referência (ex.: linha do zero)…');
   $('cvlC2').onclick = mode('c2', 'Clique na altura da 2ª referência (ex.: linha mais alta)…');
   ['cvlP1', 'cvlP2'].forEach((id) => $(id).addEventListener('input', draw));
+  const drop = $('cvlDrop');
+  drop.onclick = () => $('cvlFile').click();
+  $('cvlOther').onclick = () => $('cvlFile').click();
+  drop.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') $('cvlFile').click(); };
+  $('cvlFile').onchange = (e) => { const f = e.target.files[0]; e.target.value = ''; if (f) load(f); };
+  d.addEventListener('dragover', (e) => { e.preventDefault(); drop.classList.add('over'); });
+  d.addEventListener('dragleave', () => drop.classList.remove('over'));
+  d.addEventListener('drop', (e) => { e.preventDefault(); drop.classList.remove('over'); const f = [...e.dataTransfer.files].find((x) => x.type.startsWith('image/')); if (f) load(f); else $('cvlOut').textContent = 'Solte um arquivo de imagem (PNG/JPG).'; });
+  d.addEventListener('paste', (e) => { const f = [...(e.clipboardData?.files || [])].find((x) => x.type.startsWith('image/')); if (f) { e.preventDefault(); e.stopPropagation(); load(f); } });
   $('cvlRun').onclick = run;
   $('cvlCancel').onclick = () => d.close();
-  $('cvlApply').onclick = () => { if (result) { d.close(); onDone(result); } };
+  $('cvlApply').onclick = () => { if (result) { d.close(); onDone(result, curFile); } };
 }
 
 function renderSw() {
@@ -125,10 +135,19 @@ function run() {
   $('cvlApply').disabled = false;
 }
 
+/** Abre o conversor. Sem arquivo: mostra a área de upload (clique/arraste/cole). */
 export async function openLocalConverter(file, handler) {
   ensure(); onDone = handler; result = null; $('cvlApply').disabled = true; $('cvlOut').textContent = '';
-  bmp = await createImageBitmap(file);
+  $('cvlDrop').hidden = false; $('cvlCv').hidden = true; $('cvlOther').hidden = true;
+  if (!$('cvlDlg').open) $('cvlDlg').showModal();
+  if (file) await load(file); else $('cvlDrop').focus();
+}
+async function load(file) {
+  if (!file.type?.startsWith('image/')) { $('cvlOut').textContent = 'Mande uma imagem (PNG/JPG).'; return; }
+  curFile = file; result = null; $('cvlApply').disabled = true; $('cvlOut').textContent = '';
+  try { bmp = await createImageBitmap(file); } catch { $('cvlOut').textContent = 'Não consegui ler essa imagem.'; return; }
   const cv = $('cvlCv'); cv.width = bmp.width; cv.height = bmp.height;
+  $('cvlDrop').hidden = true; cv.hidden = false; $('cvlOther').hidden = false;
   const ctx = cv.getContext('2d', { willReadFrequently: true }); ctx.drawImage(bmp, 0, 0);
   img = ctx.getImageData(0, 0, bmp.width, bmp.height);
   picked = dominantColors(img).map((c, i) => ({ hex: c.hex, on: i < 2 }));
@@ -137,8 +156,7 @@ export async function openLocalConverter(file, handler) {
   const lines = horizontalLines(img);
   $('cvlP1').value = lines.length ? Math.round(lines[lines.length - 1]) : bmp.height - 1;
   $('cvlP2').value = lines.length > 1 ? Math.round(lines[0]) : 0;
-  if (picked[0]) $('cvlType').value = 'auto';
+  $('cvlType').value = 'auto';
   draw();
-  if (!$('cvlDlg').open) $('cvlDlg').showModal();
 }
 export { detectType, colorMask };

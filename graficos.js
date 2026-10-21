@@ -1094,48 +1094,10 @@ function importConfirmado() {
   });
 }
 
-// ── Converter imagem em gráfico: manda pro CLI do Claude (server local) ───────
-$('btnIA').addEventListener('click', () => $('fileIA').click());
+// ── Converter imagem em gráfico: conversor local por pixel (conversor-local.js) ──
+$('btnIA').addEventListener('click', () => convertImage(null));   // abre o conversor local com área de upload
 $('iaClose').addEventListener('click', () => { $('iaOverlay').hidden = true; });
 
-function iaShow() {
-  const ov = $('iaOverlay');
-  ov.hidden = false; ov.classList.remove('err');
-  $('iaClose').hidden = true;
-  ov.querySelector('.ia-title').textContent = 'Lendo o gráfico com o Claude…';
-  const t0 = Date.now();
-  // O que o usuário vê é o progresso REAL vindo do servidor (/api/progress),
-  // não um palpite: numa imagem com muitas séries a IA passa minutos só
-  // ESCREVENDO o JSON dos dados, e um cronômetro sozinho parece travamento.
-  let fase = '';
-  const tick = () => {
-    const s = Math.round((Date.now() - t0) / 1000);
-    ov.querySelector('#iaTimer').textContent = `${s}s${fase ? ' · ' + fase : ' · lendo…'}`;
-  };
-  const puxa = async () => {
-    try {
-      const p = await (await fetch('/api/progress')).json();
-      if (!p.rodando) return;
-      fase = p.chars > 0
-        // gráfico com muitas séries = centenas de números pra transcrever;
-        // mostrar o tamanho do que já saiu deixa claro que está andando
-        ? `escrevendo os dados (${p.chars.toLocaleString('pt-BR')} caracteres)`
-        : (p.fase || '');
-    } catch { /* servidor ocupado respondendo: tenta no próximo tick */ }
-  };
-  tick();
-  const iv = setInterval(() => { tick(); puxa(); }, 1000);
-  return iv;   // cronômetro + progresso ao vivo
-}
-function iaError(msg) {
-  const ov = $('iaOverlay');
-  ov.hidden = false; ov.classList.add('err');
-  ov.querySelector('.ia-title').textContent = 'Não deu';
-  ov.querySelector('#iaTimer').innerHTML = msg;
-  $('iaClose').hidden = false;
-}
-
-$('fileIA').addEventListener('change', (e) => { if (e.target.files[0]) convertImage(e.target.files[0]); e.target.value = ''; });
 
 // ── Autocomplete de ativo (evita erro de digitação) + paste de URL da corretora ─
 // A lista de símbolos quase não muda, então "tempo real" aqui é buscar uma vez
@@ -1447,10 +1409,9 @@ async function fileToImageData(file) {
 }
 
 async function convertImage(file) {
-  if (!file?.type?.startsWith('image/')) return flash('Mande uma imagem (PNG/JPG).', true);
   try {
-    await openLocalConverter(file, (r) => {
-      setReference(file);
+    await openLocalConverter(file, (r, f) => {
+      setReference(f);
       const rows = [['', ...r.series.map((x) => x.name)], ...r.labels.map((l, i) => [capFirst(String(l)), ...r.series.map((x) => (x.data[i] == null ? '' : String(x.data[i])))])];
       spec = { ...structuredClone(DEFAULTS), title: spec.title, subtitle: spec.subtitle, source: spec.source, type: r.type, series: [] };
       spec.y.min = null; spec.y.max = null;
@@ -1505,65 +1466,8 @@ function appendChat(who, text) {
 $('iaFab').addEventListener('click', openChat);
 $('iaMin').addEventListener('click', minChat);
 
-async function refineChart(message) {
-  if (!iaSession) return flash('Converta uma imagem primeiro.', true);
-  if (refining) return;                        // uma correção por vez
-  refining = true;
-  appendChat('user', message);
-  const pending = appendChat('bot', 'pensando… 0s');
-  pending.classList.add('pending');
-  const t0 = Date.now();
-  // mesma ideia do overlay da conversão: progresso REAL do servidor, porque a
-  // correção relê a imagem e pode passar minutos reescrevendo os dados
-  let fase = '';
-  const timer = setInterval(async () => {
-    const s = Math.round((Date.now() - t0) / 1000);
-    pending.textContent = `pensando… ${s}s${fase ? ' · ' + fase : ''}`;
-    try {
-      const p = await (await fetch('/api/progress')).json();
-      if (p.rodando) fase = p.chars > 0 ? `escrevendo (${p.chars.toLocaleString('pt-BR')} caracteres)` : (p.fase || '');
-    } catch { /* ignora: é só o indicador */ }
-  }, 1000);
-  $('iaSend').disabled = $('iaMsg').disabled = true;
-  const ctrl = new AbortController();
-  // Sem teto curto aqui: quem decide é o servidor, que mata por INATIVIDADE
-  // (4 min mudo, 15 min se a API avisou que estamos na fila) em vez de por
-  // tempo total. O teto de 3 min do cliente era o que produzia o "demorou
-  // demais" bem quando a resposta estava quase chegando. 16 min é só a rede
-  // pro caso de a conexão em si morrer.
-  const kill = setTimeout(() => ctrl.abort(), 960000);
-  // manda só os campos de dado; tema/marca d'água/formato ficam locais
-  const dataSpec = {
-    type: spec.type, title: spec.title, subtitle: spec.subtitle, source: spec.source,
-    labels: spec.labels, series: spec.series.map((s) => ({ name: s.name, data: s.data })),
-    y: { format: spec.y.format, prefix: spec.y.prefix, suffix: spec.y.suffix },
-  };
-  try {
-    const r = await fetch('/api/refine', {
-      method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ sessionId: iaSession, spec: dataSpec, message }), signal: ctrl.signal,
-    });
-    const j = await r.json();
-    if (!r.ok || j.error) throw new Error(j.error || `HTTP ${r.status}`);
-    if (j.sessionId) iaSession = j.sessionId;   // a conversa acumula contexto
-    applyRefine(j.spec);
-    pending.classList.remove('pending');
-    // stalledMs = maior silêncio da API dentro da chamada. Só vale dizer quando
-    // foi grande: aí a demora não foi a ferramenta, foi espera externa.
-    const parado = j.stalledMs > 30000 ? `, ${Math.round(j.stalledMs / 60000)} min parado esperando a API` : '';
-    pending.textContent = `✓ atualizado (${((j.ms || 0) / 1000).toFixed(0)}s${parado})`;
-  } catch (e) {
-    pending.classList.remove('pending'); pending.classList.add('err');
-    pending.textContent = e.name === 'AbortError' ? '✗ conexão perdida — tente de novo ou recarregue a página'
-      : /Failed to fetch|NetworkError/.test(e.message) ? '✗ servidor de IA fora do ar — rode node --watch server.mjs no terminal'
-        : '✗ ' + e.message;
-  } finally {
-    clearInterval(timer); clearTimeout(kill);
-    refining = false;
-    $('iaSend').disabled = $('iaMsg').disabled = false;
-    $('iaMsg').value = ''; $('iaMsg').focus();
-  }
-}
+// versão estática: sem chat de correção por IA (o conversor é local)
+function refineChart() { flash('Correção por IA indisponível na versão estática — ajuste arrastando os pontos ou pela tabela.', true); }
 // aplica a spec corrigida preservando as escolhas locais (cor/tracejado/tema/etc.)
 function applyRefine(c) {
   if (!c) return;
