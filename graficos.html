@@ -1,0 +1,894 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Gráficos · Gerador de Relatórios Paradigma</title>
+<link rel="stylesheet" href="paradigma.css">
+<style>
+  body { height: 100dvh; display: grid; grid-template-rows: auto 1fr; overflow: hidden; }
+
+  header {
+    display: flex; align-items: center; gap: 1rem;
+    padding: .8rem 1.1rem; border-bottom: 1px solid var(--hair);
+  }
+  header .hleft { display: flex; align-items: center; gap: .65rem; min-width: 0; }
+  /* ion-icon name="menu-outline" — mostra/esconde a sidebar esquerda */
+  header .hleft #btnSidebar {
+    flex: none; width: var(--ctrl-h, 2rem); height: var(--ctrl-h, 2rem); padding: 0;
+    display: grid; place-items: center; border-radius: var(--ctrl-r, 9px); color: var(--muted);
+  }
+  header .hleft #btnSidebar svg { width: 18px; height: 18px; display: block; }
+  header .hleft #btnSidebar:hover { color: var(--ink); }
+  header .hleft #btnSidebar[aria-pressed="true"] {
+    color: #fff; border-color: var(--violet); background: var(--violet);
+  }
+  header .hleft #btnSidebar[aria-pressed="true"]:hover { color: #fff; }
+  header h1 { font-size: 1rem; font-weight: 600; margin: 0; letter-spacing: -.01em; }
+  header .crumb { color: var(--muted); font-size: .74rem; font-stretch: 85%;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  header nav { margin-left: auto; display: flex; gap: .4rem; align-items: center; }
+
+  /* menu do botão "Baixar" (PNG/SVG/JSON) — mesmo desenho do Diagramador */
+  #downloadMenu {
+    position: fixed; z-index: 40; display: grid; gap: .2rem; width: 240px;
+    padding: .35rem; border: 1px solid var(--hair-strong); border-radius: 10px;
+    background: color-mix(in srgb, var(--lilac) 10%, var(--ground));
+    box-shadow: 0 16px 50px -16px #000;
+  }
+  #downloadMenu[hidden] { display: none; }
+  #downloadMenu button {
+    display: flex; align-items: center; gap: .55rem; text-align: left; width: 100%;
+    padding: .5rem .55rem; border: 0; border-radius: 6px;
+    background: transparent; color: var(--ink); cursor: pointer;
+    font-size: .82rem; font-stretch: 85%;
+  }
+  #downloadMenu button svg { width: 16px; height: 16px; flex: none; color: var(--lilac); }
+  #downloadMenu button .dl-label { flex: 1; min-width: 0; }
+  #downloadMenu button:hover { background: color-mix(in srgb, var(--violet) 16%, transparent); }
+  #downloadMenu .dl-sep {
+    height: 1px; margin: .2rem .4rem;
+    background: var(--hair); pointer-events: none;
+  }
+  #downloadMenu .dl-badge {
+    flex: none; margin-left: auto;
+    font-size: .6rem; font-weight: 600; font-stretch: 85%;
+    letter-spacing: .04em; text-transform: uppercase;
+    padding: .18rem .42rem; border-radius: 999px; line-height: 1.1;
+    color: var(--lilac);
+    background: color-mix(in srgb, var(--lilac) 16%, transparent);
+  }
+  #downloadMenu .dl-badge.rec {
+    color: var(--mint);
+    background: color-mix(in srgb, var(--mint) 16%, transparent);
+  }
+
+  /* summary com badge + ⓘ (Importar dados) — mesmo padrão do Diagramador (Índice) */
+  summary.sum-info {
+    display: flex; align-items: center; gap: .35rem; width: 100%;
+  }
+  summary.sum-info .sum-trail {
+    margin-left: auto;
+    display: inline-flex; align-items: center; gap: .35rem;
+    flex: none;
+  }
+  .sec-badge {
+    font-size: .58rem; font-weight: 700; font-stretch: 85%;
+    letter-spacing: .06em; text-transform: uppercase;
+    padding: .16rem .4rem; border-radius: 999px; line-height: 1.1;
+    color: #E8B029;
+    background: color-mix(in srgb, #E8B029 16%, transparent);
+  }
+  .infoicon {
+    position: relative; border: 0; background: none; padding: 0;
+    width: 1.15rem; height: 1.15rem;
+    display: grid; place-items: center;
+    color: var(--muted); cursor: help; line-height: 1;
+    text-transform: none; letter-spacing: normal;
+  }
+  .infoicon svg { width: 14px; height: 14px; display: block; }
+  .infoicon:hover { background: none; color: var(--ink); }
+  /* bolha via ::after (não title=): botão dentro de summary é interativo aninhado
+     e o Chrome às vezes não dispara o tooltip nativo no hover */
+  .infoicon::after {
+    content: attr(data-tip); position: absolute; top: 100%; right: 0; margin-top: 6px;
+    width: min(260px, 70vw); padding: .55rem .65rem; border-radius: 8px;
+    background: color-mix(in srgb, var(--lilac) 14%, var(--ground)); border: 1px solid var(--hair-strong);
+    color: var(--ink); font-size: .68rem; font-weight: 400; font-stretch: 90%;
+    text-transform: none; letter-spacing: normal;
+    line-height: 1.45; text-align: left; white-space: pre-line;
+    opacity: 0; pointer-events: none; transition: opacity .12s; z-index: 50;
+    box-shadow: 0 12px 30px -12px #000;
+  }
+  .infoicon:hover::after, .infoicon:focus-visible::after { opacity: 1; }
+
+  /* sidebar 320px (mesmo do Diagramador); painel + <details> expandable vêm de paradigma.css.
+     width anima — painel interno fixo + overflow:hidden = slide in/out limpo. */
+  main { display: flex; min-height: 0; }
+  aside#sidebar {
+    flex: 0 0 auto;
+    width: 320px;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+    border-right: 1px solid var(--hair);
+    box-sizing: border-box;
+    transition:
+      width .28s cubic-bezier(.4, 0, .2, 1),
+      border-color .28s ease;
+  }
+  main.sidebar-collapsed > aside#sidebar {
+    width: 0;
+    border-right-color: transparent;
+  }
+  aside#sidebar > .sidebar-panel {
+    width: 320px;
+    max-width: 100%;
+    height: 100%;
+    gap: .9rem; /* respiro entre segment principal e o pane ativo */
+    min-width: 0;
+  }
+  /* nada na sidebar pode estourar a largura do painel (tabela CSV, grids, textareas) */
+  aside#sidebar .pane,
+  aside#sidebar details,
+  aside#sidebar details > .body,
+  aside#sidebar .field,
+  aside#sidebar textarea,
+  aside#sidebar input,
+  aside#sidebar select {
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    aside#sidebar { transition: none; }
+  }
+  /* abas Importar/Customizar: empilham seções <details> sem gap extra (pad do details) */
+  .pane.sb-main { gap: 0; align-content: start; }
+  /* panes de fonte de dados (Imagem/Corretora/HTML) — grid interno, sem o pad dos details */
+  .pane > .body { display: grid; gap: .55rem; }
+
+  /* segment Importar | Customizar — ícones à esquerda (igual Diagramador) */
+  #mainSegment button { gap: .35rem; }
+  #mainSegment button svg { width: 14px; height: 14px; flex: none; display: block; }
+  /* segment Imagem/Corretora/HTML — ícone Ionicons à esquerda do rótulo */
+  #dataSegment button { gap: .3rem; font-size: .7rem; }
+  #dataSegment button svg { width: 13px; height: 13px; flex: none; display: block; }
+  /* segment Tema (Claro/Escuro) — mesmo gap/ícone */
+  #themeSeg button { gap: .35rem; }
+  #themeSeg button svg { width: 14px; height: 14px; flex: none; display: block; }
+  /* CSV: Tabela | Código */
+  #csvModeSeg { margin-bottom: .15rem; }
+  #csvModeSeg button { gap: .3rem; font-size: .72rem; }
+  #csvModeSeg button svg { width: 13px; height: 13px; flex: none; display: block; }
+  .csv-table-host {
+    width: 100%; max-width: 100%; min-width: 0;
+    box-sizing: border-box;
+    padding: 12px 10px 18px 14px;
+    /* scroll da planilha fica AQUI — não no painel da sidebar */
+    overflow-x: auto;
+    overflow-y: visible;
+    border: 1px solid var(--hair);
+    border-radius: var(--ctrl-r, 9px);
+    background: color-mix(in srgb, var(--lilac) 5%, transparent);
+  }
+  .csv-table-host[hidden] { display: none !important; }
+  .csv-table-host .tbl-wrap {
+    width: 100% !important;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+  }
+  .csv-table-host .tbl {
+    color: var(--ink);
+    font-size: .72rem;
+    line-height: 1.35;
+  }
+  .csv-table-host .tbl th,
+  .csv-table-host .tbl td {
+    border-color: var(--hair-strong);
+    color: var(--ink);
+    padding: 5px 7px;
+  }
+  .csv-table-host .tbl th,
+  .csv-table-host .tbl .tbl-head-cell {
+    background: color-mix(in srgb, var(--lilac) 14%, var(--ground)) !important;
+    color: var(--ink);
+  }
+  .csv-table-host .tbl th:focus,
+  .csv-table-host .tbl td:focus {
+    outline: 2px solid var(--violet);
+    outline-offset: -2px;
+  }
+  .csv-table-host .tbl-handle {
+    background: var(--ground);
+    box-shadow: 0 0 0 1px var(--hair-strong);
+  }
+
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem; }
+
+  /* "Logo da Paradigma" — mesmo peso de rótulo do Diagramador (não o cinza de field) */
+  aside .field { display: grid; gap: .3rem; font-size: .74rem; font-stretch: 85%; color: var(--muted); }
+  .fieldtitle { color: var(--ink); font-size: .82rem; }
+  /* slider com valor à direita + ↺ (padrão Diagramador / sliders de logo) */
+  aside .field-row { display: flex; justify-content: space-between; align-items: baseline; }
+  aside .field-val {
+    display: inline-flex; align-items: center; gap: .3rem;
+    color: var(--ink); font-variant-numeric: tabular-nums;
+  }
+  aside .resetbtn {
+    border: 0; background: transparent; padding: 0 .1rem; margin: 0;
+    color: var(--muted); cursor: pointer; font-size: 12px; line-height: 1;
+  }
+  aside .resetbtn:hover { color: var(--ink); }
+  /* picker de logo: 2 colunas, altura fixa 76px (igual Diagramador) — preview SVG maior */
+  .logopick {
+    display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: .3rem; margin-top: .3rem; width: 100%;
+  }
+  .logopick button {
+    height: 76px; min-width: 0; width: 100%; box-sizing: border-box;
+    display: flex; align-items: center; justify-content: center; overflow: hidden;
+    padding: .3rem; border: 1px solid var(--hair); border-radius: var(--r);
+    background: transparent; color: var(--muted); cursor: pointer;
+    font-size: .72rem; font-stretch: 85%;
+  }
+  .logopick button:hover { border-color: var(--hair-strong); color: var(--ink); }
+  .logopick button[aria-pressed="true"] {
+    border-color: var(--violet); color: var(--ink);
+    background: color-mix(in srgb, var(--violet) 16%, transparent);
+  }
+  .logopick button svg { display: block; margin: 0 auto; max-width: 100%; height: auto; }
+
+  /* picker de tipo com ícone */
+  .typepick { display: grid; grid-template-columns: repeat(4, 1fr); gap: .3rem; }
+  .typepick button {
+    display: grid; justify-items: center; gap: .2rem; padding: .45rem .2rem;
+    border: 1px solid var(--hair); border-radius: var(--r); background: transparent;
+    color: var(--muted); cursor: pointer; font-stretch: 85%; font-size: .64rem;
+  }
+  .typepick button svg { width: 24px; height: 16px; }
+  .typepick button:hover { border-color: var(--hair-strong); color: var(--ink); }
+  .typepick button[aria-pressed="true"] {
+    border-color: var(--violet); color: var(--ink);
+    background: color-mix(in srgb, var(--violet) 18%, transparent);
+  }
+
+  /* switch de mostrar label — campo à esquerda, switch à direita (alinha com o input) */
+  .labelrow { display: flex; gap: .55rem; align-items: end; }
+  .labelrow .field { flex: 1; min-width: 0; }
+  .lblswitch {
+    flex: 0 0 auto; width: 2.1rem; height: 1.2rem; margin-bottom: .3rem; padding: 0;
+    border-radius: 999px; border: 1px solid var(--hair-strong);
+    background: color-mix(in srgb, var(--lilac) 10%, transparent); position: relative; cursor: pointer;
+  }
+  .lblswitch::after {
+    content: ""; position: absolute; top: 50%; left: 2px; transform: translateY(-50%);
+    width: .85rem; height: .85rem; border-radius: 50%; background: var(--muted); transition: left .12s, background .12s;
+  }
+  .lblswitch[aria-checked="true"] { background: var(--mint); border-color: var(--mint); }   /* Paradigma Aqua */
+  .lblswitch[aria-checked="true"]::after { left: calc(100% - .85rem - 2px); background: #fff; }
+  .toggle { display: flex; align-items: center; gap: .45rem; font-size: .78rem; color: var(--muted); cursor: pointer; }
+
+  textarea { width: 100%; min-height: 130px; resize: vertical; font-family: ui-monospace, "SF Mono", monospace; font-size: .72rem; line-height: 1.5; }
+
+  .serie {
+    display: grid; grid-template-columns: auto 1fr auto; gap: .55rem; align-items: center;
+    border: 1px solid var(--hair); border-radius: var(--r); padding: .4rem .55rem;
+  }
+  .serie .serie-opts { grid-column: 1 / -1; display: flex; gap: .35rem; }
+  .serie .mini { font-size: .68rem; padding: .22rem .4rem; flex: 1; min-width: 0; }
+  .serie .sname { border: 0; background: none; padding: .2rem; min-width: 0; color: var(--ink); }
+  .serie .swatch { width: 1.5rem; height: 1.5rem; }
+  /* série escondida do gráfico — continua editável, só sinaliza que não é desenhada */
+  .serie.off .swatch, .serie.off .sname, .serie.off .serie-opts { opacity: .4; }
+  /* .colorfield e o popover .swatch-pop/.sp-* vêm do componente compartilhado swatch.js */
+
+  /* ---------- editor de arraste (pontos/barras) ---------- */
+  #editLayer { position: absolute; inset: 0; z-index: 4; touch-action: none; pointer-events: none; }
+  #editLayer.on { pointer-events: auto; cursor: crosshair; }
+  #editLayer.can-drag { cursor: grab; }
+  #editLayer.can-edit { cursor: text; }
+  #editLayer.dragging { cursor: grabbing; }
+  /* input inline pra renomear rótulo de eixo direto no gráfico */
+  .label-edit {
+    position: absolute; z-index: 8; transform: translate(-50%, -50%);
+    padding: .1rem .35rem; font-size: .82rem; text-align: center;
+    border: 1px solid var(--violet); border-radius: 5px;
+    background: var(--ground); color: var(--ink); box-shadow: 0 8px 24px -10px #000;
+  }
+  #editToggle {
+    display: inline-flex; align-items: center; gap: .35rem;
+    font-stretch: 85%;
+  }
+  #editToggle svg { width: 14px; height: 14px; display: block; flex: none; }
+  #editToggle.on { background: var(--violet); border-color: var(--violet); font-weight: 600; color: #fff; }
+  /* undo/redo solid — cor ativa (lilac) vs desativada (lilac fraco); sem só opacity */
+  header nav #btnUndo,
+  header nav #btnRedo {
+    display: grid; place-items: center;
+    width: var(--ctrl-h, 2rem); height: var(--ctrl-h, 2rem); padding: 0;
+    color: var(--lilac);
+  }
+  header nav #btnUndo:hover:not(:disabled),
+  header nav #btnRedo:hover:not(:disabled) { color: var(--ink); }
+  header nav #btnUndo:disabled,
+  header nav #btnRedo:disabled {
+    opacity: 1;
+    color: color-mix(in srgb, var(--lilac) 32%, transparent);
+    cursor: default;
+  }
+  header nav #btnUndo:disabled:hover,
+  header nav #btnRedo:disabled:hover {
+    background: color-mix(in srgb, var(--lilac) 7%, transparent);
+    color: color-mix(in srgb, var(--lilac) 32%, transparent);
+  }
+  header nav #btnUndo svg,
+  header nav #btnRedo svg { width: 16px; height: 16px; display: block; }
+  header nav button:disabled { opacity: .38; cursor: default; }
+  header nav button:disabled:hover { background: color-mix(in srgb, var(--lilac) 7%, transparent); }
+  .iconbtn { padding: .3rem .55rem; font-size: 1rem; line-height: 1; }
+  .iconbtn:disabled { opacity: .35; cursor: default; }
+  .edit-handle { fill: color-mix(in srgb, var(--ink) 70%, transparent); stroke: var(--violet); stroke-width: 2; pointer-events: none; }
+  .edit-handle.hot { fill: var(--ink); }
+  /* rótulo oculto do eixo X: marquinha fantasma só pra achar e clicar de novo */
+  .edit-handle-ghost { fill: none; stroke: var(--violet); stroke-width: 1.5; stroke-dasharray: 2 2; opacity: .6; pointer-events: none; }
+  /* preview do 2× clique: ponto fantasma no meio do segmento (não mexe no eixo) */
+  .edit-insert-ghost {
+    fill: color-mix(in srgb, var(--violet) 45%, transparent);
+    stroke: var(--violet); stroke-width: 1.5; opacity: .55;
+    pointer-events: none;
+  }
+  #dragTip {
+    position: absolute; z-index: 6; pointer-events: none;
+    min-width: 7.5rem; min-height: 2.85rem;
+    padding: .5rem .7rem; border-radius: 8px;
+    font-size: .78rem; font-weight: 600; line-height: 1.35;
+    background: var(--violet); color: #fff;
+    display: grid; gap: .2rem; align-content: center;
+    white-space: nowrap;
+    box-shadow: 0 10px 28px -12px #000;
+    /* acima do cursor, com folga pra caber X+Y */
+    transform: translate(-50%, calc(-100% - 14px));
+  }
+  #dragTip[hidden] { display: none; }
+  #dragTip .tip-row {
+    display: flex; gap: .45rem; align-items: baseline; min-height: 1.15em;
+  }
+  #dragTip .tip-k {
+    flex: none; min-width: 1.1em;
+    font-size: .66rem; font-weight: 600; font-stretch: 85%;
+    letter-spacing: .04em; text-transform: uppercase;
+    opacity: .78;
+  }
+  #dragTip .tip-v {
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+  }
+
+  /* ---------- palco ---------- */
+  section.stage {
+    position: relative;
+    flex: 1 1 auto;
+    min-width: 0;
+    display: grid; grid-template-rows: 1fr auto; min-height: 0;
+    background:
+      radial-gradient(ellipse 70% 50% at 50% 130%, color-mix(in srgb, var(--violet) 26%, transparent), transparent 72%),
+      var(--ground);
+  }
+  /* overlay do "Converter com IA" — cobre o palco pra ninguém achar que travou */
+  #iaOverlay {
+    position: absolute; inset: 0; z-index: 5;
+    display: grid; place-items: center;
+    background: color-mix(in srgb, var(--ground) 78%, transparent);
+    backdrop-filter: blur(2px);
+  }
+  #iaOverlay[hidden] { display: none; }
+  .ia-card {
+    display: grid; justify-items: center; gap: .7rem; text-align: center;
+    padding: 1.6rem 2rem; border: 1px solid var(--hair-strong); border-radius: 10px;
+    background: color-mix(in srgb, var(--lilac) 7%, var(--ground));
+    box-shadow: 0 24px 70px -30px #000;
+  }
+  .ia-spinner {
+    width: 2.2rem; height: 2.2rem; border-radius: 50%;
+    border: 3px solid var(--hair); border-top-color: var(--violet);
+    animation: iaspin .8s linear infinite;
+  }
+  @keyframes iaspin { to { transform: rotate(360deg); } }
+  .ia-title { margin: 0; font-weight: 600; font-size: 1.05rem; }
+  .ia-sub { margin: 0; color: var(--muted); font-size: .82rem; font-variant-numeric: tabular-nums; }
+  #iaOverlay.err .ia-spinner { display: none; }
+  #iaOverlay.err .ia-title { color: #FF6B6B; }
+  #iaClose { margin-top: .3rem; }
+  .canvas { display: grid; place-items: center; padding: 1.4rem; min-height: 0; overflow: auto; }
+  .framewrap { position: relative; max-width: 100%; max-height: 100%; line-height: 0; }
+  .framewrap > .frame { max-width: 100%; max-height: 100%; box-shadow: 0 24px 70px -30px #000; border-radius: 4px; overflow: hidden; }
+  .canvas svg { display: block; max-width: 100%; height: auto; }
+  /* onion-skin: original sobre o gráfico, mesma caixa, pra comparar na mão */
+  #ghost { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: fill;
+    pointer-events: none; border-radius: 4px; }
+  #ghost.movable { pointer-events: auto; cursor: grab; z-index: 7; outline: 2px dashed var(--mint); }
+  #ghost.movable.grabbing { cursor: grabbing; }
+  #ghostOp { width: 90px; }
+  #ghostMove.on { background: var(--mint); border-color: var(--mint); color: var(--ground); font-weight: 600; }
+
+  .bar {
+    display: flex; gap: .5rem; align-items: center; flex-wrap: wrap;
+    padding: .7rem 1.1rem; border-top: 1px solid var(--hair);
+    background: color-mix(in srgb, var(--ground) 88%, black);
+  }
+  .bar .sep { flex: 1; }
+  .hint { font-size: .72rem; color: var(--muted); font-stretch: 90%; }
+  #status.err { color: #FF6B6B; font-weight: 600; }
+
+  /* chat flutuante com a IA da extração (mesma sessão) */
+  #iaFab {
+    position: fixed; right: 1.3rem; bottom: 1.3rem; z-index: 50;
+    width: 3.3rem; height: 3.3rem; border-radius: 50%; padding: 0;
+    display: grid; place-items: center;
+    background: var(--violet); color: #fff; border: 0;
+    box-shadow: 0 12px 32px -8px #000; cursor: pointer;
+  }
+  #iaFab:hover { filter: brightness(1.12); }
+  #iaPanel {
+    position: fixed; right: 1.3rem; bottom: 1.3rem; z-index: 51;
+    width: min(360px, calc(100vw - 2rem)); height: min(520px, calc(100vh - 2rem));
+    display: flex; flex-direction: column; overflow: hidden;
+    background: var(--ground); border: 1px solid var(--hair-strong); border-radius: 14px;
+    box-shadow: 0 28px 70px -22px #000;
+  }
+  .ia-head {
+    display: flex; align-items: center; justify-content: space-between; gap: .5rem;
+    padding: .6rem .85rem; border-bottom: 1px solid var(--hair);
+    font-size: .82rem; color: var(--ink); background: color-mix(in srgb, var(--lilac) 6%, transparent);
+  }
+  .ia-head .hint { display: inline; }
+  #iaMin { background: transparent; border: 0; color: var(--muted); cursor: pointer;
+    font-size: 1.4rem; line-height: 1; padding: 0 .4rem; }
+  #iaMin:hover { color: var(--ink); }
+  #iaLog { flex: 1; display: flex; flex-direction: column; gap: .4rem; padding: .8rem; overflow-y: auto; }
+  .ia-msg { font-size: .78rem; line-height: 1.4; padding: .4rem .6rem; border-radius: 9px; max-width: 88%; white-space: pre-wrap; }
+  .ia-user { align-self: flex-end; background: color-mix(in srgb, var(--violet) 22%, transparent); color: var(--ink); }
+  .ia-bot { align-self: flex-start; background: color-mix(in srgb, var(--lilac) 10%, transparent); color: var(--muted); }
+  .ia-bot.err { color: #FF6B6B; background: color-mix(in srgb, #FF6B6B 12%, transparent); }
+  .ia-bot.pending { animation: iaPulse 1.1s ease-in-out infinite; }
+  @keyframes iaPulse { 0%,100% { opacity: .55; } 50% { opacity: 1; } }
+  .ia-foot { display: flex; gap: .4rem; padding: .65rem .75rem; border-top: 1px solid var(--hair); }
+  #iaMsg { flex: 1; min-width: 0; }
+
+  #drop.over { outline: 2px dashed var(--mint); outline-offset: -6px; }
+  [hidden] { display: none !important; }
+
+  /* ---------- extrator ---------- */
+  dialog {
+    width: min(1240px, 94vw); max-height: 92dvh; padding: 0;
+    background: var(--ground); color: var(--ink);
+    border: 1px solid var(--hair-strong); border-radius: 10px;
+  }
+  dialog::backdrop { background: rgba(0,0,0,.68); }
+  .dlg-head {
+    display: flex; align-items: start; gap: 1rem; justify-content: space-between;
+    padding: .9rem 1.1rem; border-bottom: 1px solid var(--hair);
+  }
+  .dlg-body { display: grid; grid-template-columns: 1fr 340px; gap: 1rem; padding: 1rem; overflow: auto; max-height: calc(92dvh - 68px); }
+  .dlg-side { display: grid; gap: .7rem; align-content: start; }
+  .stagewrap { min-width: 0; }
+  #cv {
+    max-width: 100%; display: block; border-radius: var(--r);
+    border: 1px solid var(--hair); cursor: crosshair; touch-action: none;
+    background: repeating-conic-gradient(#1a1729 0 25%, #14111f 0 50%) 0 0/16px 16px;
+  }
+  .verdict { font-size: .78rem; font-stretch: 90%; margin: .4rem 0 0; display: flex; align-items: center; gap: .4rem; }
+  .verdict::before { content: ""; width: .6rem; height: .6rem; border-radius: 50%; flex: 0 0 auto; background: var(--muted); }
+  .verdict.ok::before { background: var(--mint); }
+  .verdict.atencao::before { background: #E8B029; }
+  .verdict.ruim::before { background: #FF6B6B; }
+  .gridout { font-size: .72rem; color: var(--muted); margin-top: .5rem; display: grid; gap: .15rem; }
+  .gridout .warn { color: #E8B029; }
+  #preview .err { color: #FF6B6B; }
+  .gridout table { border-collapse: collapse; width: 100%; }
+  .gridout td { padding: .05rem .3rem; font-variant-numeric: tabular-nums; }
+  .gridout td:last-child { text-align: right; color: var(--ink); }
+</style>
+</head>
+<body>
+<header>
+  <div class="hleft">
+    <button type="button" id="btnSidebar" title="Mostrar ou esconder o menu" aria-label="Mostrar ou esconder o menu lateral" aria-controls="sidebar" aria-pressed="true"></button>
+    <h1>Gráficos</h1>
+    <span class="crumb">Gerador de Relatórios · Paradigma</span>
+  </div>
+  <nav>
+    <button type="button" id="btnUndo" title="Desfazer (⌘Z)" aria-label="Desfazer" disabled></button>
+    <button type="button" id="btnRedo" title="Refazer (⌘⇧Z)" aria-label="Refazer" disabled></button>
+    <button type="button" id="btnDownload" title="Baixar o gráfico (PNG, SVG ou projeto .json)" aria-haspopup="menu" aria-expanded="false" aria-controls="downloadMenu">Baixar</button>
+  </nav>
+</header>
+<!-- menu do botão "Baixar": PNG / SVG / JSON (projeto editável) — position:fixed, JS ancora no botão -->
+<div id="downloadMenu" hidden role="menu" aria-label="Formatos de download">
+  <button type="button" data-dl="png" role="menuitem" title="Imagem PNG (usa a escala do rodapé)"><span class="dl-label">PNG</span></button>
+  <button type="button" data-dl="svg" role="menuitem" title="SVG com fonte embutida e fundo transparente"><span class="dl-label">SVG</span><span class="dl-badge rec">Recomendado</span></button>
+  <div class="dl-sep" role="separator"></div>
+  <button type="button" data-dl="json" role="menuitem" title="Projeto editável (.json)"><span class="dl-label">JSON</span><span class="dl-badge">Projeto</span></button>
+</div>
+
+<main id="drop">
+  <aside id="sidebar">
+    <div class="sidebar-panel">
+    <!-- abas de topo: Importar (dados/CSV/spec) · Customizar (tipo, séries, eixos…) -->
+    <div class="segment" id="mainSegment" role="tablist">
+      <button type="button" data-main="importar" aria-selected="true">Importar</button>
+      <button type="button" data-main="customizar" aria-selected="false">Customizar</button>
+    </div>
+
+    <div class="pane sb-main" data-pane="importar">
+    <details data-sec="dados" open>
+      <summary class="sum-info">Importar dados<span class="sum-trail"><span class="sec-badge">Beta</span><button type="button" class="infoicon" data-tip="Imagem — a IA estima eixos e valores a partir dos pixels; confira e ajuste arrastando os pontos.&#10;Corretora — só Binance e Hyperliquid (API pública, sem chave); na Hyperliquid, mercado com prefixo do dex usa o formato xyz:CL, cash:WTI.&#10;HTML — cole o markup do gráfico (o navegador não lê outros sites). DefiLlama aceita URL (API). Sparkline precisa das datas das pontas." aria-label="Limitações das opções de importação"></button></span></summary>
+      <div class="body">
+        <div class="segment cols-3" id="dataSegment" role="tablist">
+          <button data-seg="imagem" aria-selected="true">Imagem</button>
+          <button data-seg="corretora" aria-selected="false">Corretora</button>
+          <button data-seg="html" aria-selected="false">HTML</button>
+        </div>
+
+        <div class="pane" data-pane="imagem">
+          <div class="body">
+            <button id="btnIA" class="primary">Converter imagem em gráfico…</button>
+            <p class="hint" id="iaHint">Escolha uma imagem de gráfico — o Claude lê o eixo e os dados e monta o gráfico no padrão da casa. Depois <b>arraste os pontos (ou o topo das barras)</b> no gráfico à direita pra ajustar.</p>
+          </div>
+        </div>
+
+        <div class="pane" data-pane="corretora" hidden>
+          <div class="body">
+            <div class="grid2">
+              <label class="field">Corretora
+                <select id="cdVenue"><option value="binance">Binance</option><option value="hyperliquid">Hyperliquid</option></select>
+              </label>
+              <label class="field">Ativo
+                <input id="cdSymbol" type="text" placeholder="BTCUSDT ou cole a URL da corretora" spellcheck="false" list="cdSymbolList" autocomplete="off">
+                <datalist id="cdSymbolList"></datalist>
+              </label>
+              <label class="field">Intervalo
+                <select id="cdInterval">
+                  <option value="1h">1 hora</option>
+                  <option value="4h">4 horas</option>
+                  <option value="1d" selected>1 dia</option>
+                  <option value="1w">1 semana</option>
+                </select>
+              </label>
+              <label class="field">Volume
+                <select id="cdVol"><option value="1">Mostrar (eixo dir.)</option><option value="0">Ocultar</option></select>
+              </label>
+              <label class="field">Rótulo do eixo X
+                <select id="cdXLabel">
+                  <option value="dia">Dia (marca a virada)</option>
+                  <option value="diahora">Dia e hora</option>
+                  <option value="hora">Só a hora</option>
+                </select>
+              </label>
+              <label class="field">De
+                <input id="cdStart" type="date">
+              </label>
+              <label class="field">Até
+                <input id="cdEnd" type="date">
+              </label>
+            </div>
+            <button id="btnCandles" class="primary">Buscar candles</button>
+            <p class="hint">Binance: par completo (BTCUSDT). Hyperliquid: a moeda (HYPE, BTC) ou um mercado com o prefixo do dex (xyz:CL, cash:WTI). Digite pra autocompletar ou cole a URL do gráfico na corretora. API pública, sem chave.</p>
+          </div>
+        </div>
+
+        <div class="pane" data-pane="html" hidden>
+          <div class="body">
+            <label class="field">
+              Cole o HTML do elemento (no site: botão-direito no gráfico → Inspecionar → botão-direito no nó → Copy → Copy element) — ou a URL do DefiLlama
+              <textarea id="htmlIn" spellcheck="false" placeholder="&lt;div data-chart-id=…&gt; … &lt;/div&gt;  ·  ou  https://defillama.com/protocol/lighter"></textarea>
+            </label>
+            <button id="btnImportHtml">Importar</button>
+            <div class="grid2">
+              <label class="field">Primeiro ponto
+                <input id="hxStart" type="date">
+              </label>
+              <label class="field">Último ponto
+                <input id="hxEnd" type="date">
+              </label>
+            </div>
+            <button id="btnDatarX">Datar o eixo X</button>
+            <p class="hint">SVG (recharts e afins): lê a curva e os eixos e reconstrói os valores reais — sem IA, na hora. O navegador não lê o HTML de outro domínio, por isso é colar o markup, não o link.</p>
+            <p class="hint"><b>DefiLlama</b> é exceção: o gráfico dele é <code>&lt;canvas&gt;</code> (o dado só existe como pixel), então aí cole a <b>URL</b> — ou o <code>&lt;iframe&gt;</code> do "Embed Chart" — que eu busco os números pela API deles, exatos. As métricas ligadas na URL (TVL, open interest, fees) vêm juntas.</p>
+            <p class="hint">Sparkline de card não traz data nenhuma no HTML. Preencha as duas pontas da janela e os pontos são datados em passo constante (aplica junto no Importar).</p>
+          </div>
+        </div>
+      </div>
+    </details>
+
+    <details data-sec="csv" open>
+      <summary>CSV</summary>
+      <div class="body">
+        <div class="segment" id="csvModeSeg" role="tablist" aria-label="Modo da planilha">
+          <button type="button" data-csv-mode="tabela" aria-selected="true">Tabela</button>
+          <button type="button" data-csv-mode="codigo" aria-selected="false">Código</button>
+        </div>
+        <div id="csvTableHost" class="csv-table-host"></div>
+        <textarea id="tsv" spellcheck="false" hidden></textarea>
+        <button id="btnCsv" title="Baixar os dados em CSV">Baixar CSV</button>
+      </div>
+    </details>
+
+    <details data-sec="spec">
+      <summary>Projeto JSON</summary>
+      <div class="body">
+        <textarea id="json" spellcheck="false"></textarea>
+        <div class="row">
+          <button type="button" id="btnOpen" title="Abre um .json salvo antes (ou arraste o arquivo pra janela)">Abrir .json</button>
+          <input type="file" id="fileSpec" accept="application/json,.json" hidden>
+          <button type="button" id="btnCopy">Copiar</button>
+        </div>
+      </div>
+    </details>
+    </div><!-- /.pane importar -->
+
+    <div class="pane sb-main" data-pane="customizar" hidden>
+    <!-- Tipo: só o picker — opções específicas vão pra seção "Opções do tipo" -->
+    <details data-sec="tipo" open>
+      <summary>Tipo</summary>
+      <div class="body">
+        <div class="field">
+          <div class="typepick" id="typePicker">
+            <button type="button" data-type="line" title="Linha"><svg viewBox="0 0 24 16"><polyline points="1,13 7,7 13,10 23,2" fill="none" stroke="currentColor" stroke-width="2"/></svg><span>Linha</span></button>
+            <button type="button" data-type="area" title="Área"><svg viewBox="0 0 24 16"><path d="M1 13 7 7 13 10 23 2 23 15 1 15Z" fill="currentColor" opacity=".35"/><polyline points="1,13 7,7 13,10 23,2" fill="none" stroke="currentColor" stroke-width="2"/></svg><span>Área</span></button>
+            <button type="button" data-type="bar" title="Barra"><svg viewBox="0 0 24 16"><rect x="2" y="8" width="4" height="7" fill="currentColor"/><rect x="10" y="4" width="4" height="11" fill="currentColor"/><rect x="18" y="10" width="4" height="5" fill="currentColor"/></svg><span>Barra</span></button>
+            <button type="button" data-type="hbar" title="Barra horizontal"><svg viewBox="0 0 24 16"><rect x="1" y="2" width="14" height="3" fill="currentColor"/><rect x="1" y="7" width="20" height="3" fill="currentColor"/><rect x="1" y="12" width="9" height="3" fill="currentColor"/></svg><span>Barra H</span></button>
+            <button type="button" data-type="stacked" title="Empilhado"><svg viewBox="0 0 24 16"><rect x="4" y="9" width="6" height="6" fill="currentColor"/><rect x="4" y="4" width="6" height="4" fill="currentColor" opacity=".55"/><rect x="14" y="7" width="6" height="8" fill="currentColor"/><rect x="14" y="3" width="6" height="3" fill="currentColor" opacity=".55"/></svg><span>Empilhado</span></button>
+            <button type="button" data-type="stacked100" title="Empilhado 100%"><svg viewBox="0 0 24 16"><rect x="4" y="1" width="6" height="14" fill="currentColor" opacity=".4"/><rect x="4" y="7" width="6" height="8" fill="currentColor"/><rect x="14" y="1" width="6" height="14" fill="currentColor" opacity=".4"/><rect x="14" y="5" width="6" height="10" fill="currentColor"/></svg><span>100%</span></button>
+            <button type="button" data-type="donut" title="Rosca"><svg viewBox="0 0 24 16"><circle cx="12" cy="8" r="5.5" fill="none" stroke="currentColor" stroke-width="4"/></svg><span>Rosca</span></button>
+            <button type="button" data-type="pie" title="Pizza (com % nas fatias)"><svg viewBox="0 0 24 16"><circle cx="12" cy="8" r="7" fill="currentColor" opacity=".4"/><path d="M12 8 L12 1 A7 7 0 0 1 18.8 10.2 Z" fill="currentColor"/></svg><span>Pizza</span></button>
+            <button type="button" data-type="bubble" title="Bolhas — área proporcional ao valor, com ícone dentro"><svg viewBox="0 0 24 16"><circle cx="6" cy="8" r="5.5" fill="currentColor"/><circle cx="15" cy="8" r="3.5" fill="currentColor" opacity=".55"/><circle cx="21" cy="8" r="1.8" fill="currentColor" opacity=".8"/></svg><span>Bolhas</span></button>
+            <button type="button" data-type="sankey" title="Sankey — fluxo (origem → destino, espessura = valor)"><svg viewBox="0 0 24 16"><path d="M2 3h3c4 0 4 5 8 5h3" fill="none" stroke="currentColor" stroke-width="3" opacity=".55"/><path d="M2 12h3c4 0 4-3 8-3h3" fill="none" stroke="currentColor" stroke-width="2" opacity=".8"/><rect x="1" y="1" width="2" height="5" fill="currentColor"/><rect x="1" y="10" width="2" height="4" fill="currentColor"/><rect x="21" y="5" width="2" height="7" fill="currentColor"/></svg><span>Sankey</span></button>
+            <button type="button" data-type="candle" title="Candlestick (O/H/L/C)"><svg viewBox="0 0 24 16"><line x1="5" y1="1" x2="5" y2="15" stroke="currentColor"/><rect x="3" y="4" width="4" height="6" fill="currentColor"/><line x1="12" y1="2" x2="12" y2="14" stroke="currentColor"/><rect x="10" y="5" width="4" height="7" fill="currentColor" opacity=".55"/><line x1="19" y1="1" x2="19" y2="13" stroke="currentColor"/><rect x="17" y="3" width="4" height="6" fill="currentColor"/></svg><span>Candle</span></button>
+          </div>
+        </div>
+      </div>
+    </details>
+
+    <!-- Controles que só existem em certos tipos (barra, pizza, candle, bolhas, sankey) -->
+    <details data-sec="tipoOpts" id="secTipoOpts" open>
+      <summary id="tipoOptsLabel">Opções do tipo</summary>
+      <div class="body">
+        <div class="grid2" id="candleOpts" hidden>
+          <label class="field">Candle de alta
+            <button type="button" class="colorfield" id="candleUp" title="Cor do candle de alta"></button>
+          </label>
+          <label class="field">Candle de baixa
+            <button type="button" class="colorfield" id="candleDown" title="Cor do candle de baixa"></button>
+          </label>
+          <label class="field">Espessura do pavio<input id="candleWick" type="number" min="0" max="20" step="0.2"></label>
+        </div>
+        <div id="bubbleOpts" hidden>
+          <div class="grid2">
+            <label class="field">Posição do rótulo
+              <select id="bbLabel"><option value="below">Abaixo</option><option value="above">Acima</option><option value="right">À direita</option></select>
+            </label>
+            <label class="field">Bolha mínima <span id="bbMinRVal"></span><input id="bbMinR" type="range" min="2" max="40" step="1" data-snaps="2,9,12,16,24,40"></label>
+            <label class="field">Ícone mínimo <span id="bbIcoMinVal"></span><input id="bbIcoMin" type="range" min="6" max="60" step="1" data-snaps="6,13,16,20,40,60"></label>
+            <label class="field">Ícone máximo <span id="bbIcoMaxVal"></span><input id="bbIcoMax" type="range" min="14" max="140" step="2" data-snaps="14,40,56,72,96,140"></label>
+          </div>
+          <p class="hint">A área do círculo é proporcional ao valor (raio = √valor) — é assim que o olho lê tamanho. <b>Bolha mínima</b> resgata o valor miúdo que sumiria; <b>ícone mínimo</b> é onde o traço vira borrão (abaixo disso a bolha fica limpa) e <b>máximo</b> impede que o ícone domine a bolha grande. A sigla <code>txt:</code> acompanha o mesmo tamanho.</p>
+        </div>
+        <div id="sankeyOpts" hidden>
+          <label class="field">Espessura das barras <span id="skScaleVal"></span><input id="skScale" type="range" min="15" max="100" step="5" data-snaps="15,25,50,75,100"></label>
+          <p class="hint">Independente da altura da imagem: cresça a altura pra caber o texto e reduza aqui pra as barras não engordarem junto. Em <b>Escala logarítmica</b> (em Eixos), fluxo pequeno ao lado de gigante fica visível — a espessura deixa de ser proporcional, então diga isso na legenda.</p>
+        </div>
+        <div id="pieOpts" hidden>
+          <label class="toggle"><input id="gsOn" type="checkbox"> Juntar fatias pequenas em "Outros"</label>
+          <div class="grid2">
+            <label class="field">Abaixo de <span id="gsVal"></span><input id="gsPct" type="range" min="0.5" max="15" step="0.5" data-snaps="0.5,2,5,8,10,15"></label>
+            <label class="field">Nome do grupo<input id="gsLabel" type="text" placeholder="Outros"></label>
+          </div>
+        </div>
+        <div class="grid2" id="barOpts" hidden>
+          <label class="field">Canto arredondado <span id="brVal"></span><input id="barRadius" type="range" min="0" max="24" step="1" data-snaps="0,4,8,12,16,24"></label>
+          <label class="field">Espaço entre barras <span id="bgVal"></span><input id="barGap" type="range" min="0" max="0.8" step="0.02" data-snaps="0,0.2,0.28,0.4,0.6,0.8" data-edit-scale="100"></label>
+          <label class="toggle"><input id="btShow" type="checkbox"> Fundo (iguala a 100%)</label>
+          <label class="field">Opacidade do fundo <span id="btOpVal"></span><input id="btOpacity" type="range" min="0" max="100" step="5" data-snaps="0,10,25,50,75,100"></label>
+          <label class="field">Espessura do fundo <span id="btScaleVal"></span><input id="btScale" type="range" min="50" max="200" step="10" data-snaps="50,75,100,150,200"></label>
+        </div>
+      </div>
+    </details>
+
+    <!-- Lista de séries / fatias / nós / bolhas — título muda com o tipo -->
+    <details data-sec="series" open>
+      <summary id="seriesSecLabel">Séries</summary>
+      <div class="body"><div id="series"></div></div>
+    </details>
+
+    <!-- Campos com data-show: visibilidade por família de tipo (syncSidebarVisibility) -->
+    <details data-sec="eixos" id="secEixos">
+      <summary>Eixos e rótulos</summary>
+      <div class="body">
+        <div class="grid2">
+          <label class="field" data-show="values">Formato do valor
+            <select id="yformat">
+              <option value="num">Número</option>
+              <option value="compact">Compacto (mil/mi/bi)</option>
+              <option value="pct">Porcentagem</option>
+              <option value="usd">US$</option>
+              <option value="brl">R$</option>
+            </select>
+          </label>
+          <label class="field" data-show="labelMode">Rótulos diretos
+            <select id="labelMode">
+              <option value="ends">Pontas</option>
+              <option value="max">Máximo</option>
+              <option value="all">Todos</option>
+              <option value="none">Nenhum</option>
+            </select>
+          </label>
+          <label class="field" data-show="cartesian">Grade
+            <select id="grid"><option value="y">Horizontal</option><option value="x">Vertical</option><option value="both">Ambas</option><option value="none">Nenhuma</option></select>
+          </label>
+          <label class="field" data-show="cartesian">Eixo Y
+            <select id="yside"><option value="left">Esquerda</option><option value="right">Direita</option></select>
+          </label>
+          <label class="field" data-show="yscale">Escala
+            <select id="yscale"><option value="linear">Linear</option><option value="log">Logarítmica</option></select>
+          </label>
+          <label class="field" data-show="legend">Legenda
+            <select id="legend"><option value="top">Topo</option><option value="bottom">Base</option><option value="none">Nenhuma</option></select>
+          </label>
+          <label class="field" data-show="cartesian">Mín. do eixo<input id="ymin" type="number" placeholder="auto"></label>
+          <label class="field" data-show="cartesian">Máx. do eixo<input id="ymax" type="number" placeholder="auto"></label>
+          <label class="field" data-show="cartesian">Título eixo Y<input id="ytitle" type="text"></label>
+          <label class="field" data-show="cartesian">1 rótulo a cada<input id="xevery" type="number" min="1" value="1"></label>
+          <label class="field" data-show="values">Prefixo<input id="yprefix" type="text" placeholder="ex.: ~"></label>
+          <label class="field" data-show="values">Sufixo<input id="ysuffix" type="text" placeholder="ex.: BTC"></label>
+        </div>
+      </div>
+    </details>
+
+    <!-- Só linha/área: espessura, marcadores, suavizar -->
+    <details data-sec="traco" id="secTraco">
+      <summary>Traço</summary>
+      <div class="body">
+        <label class="field">Espessura da linha <span id="swVal"></span><input id="strokeWidth" type="range" min="1" max="8" step=".5" data-snaps="1,2,3,4,6,8"></label>
+        <label class="field">Marcador nos pontos <span id="dotVal"></span><input id="dotSize" type="range" min="0" max="16" step="2" data-snaps="0,4,8,10,12,16"></label>
+        <label class="toggle"><input id="smooth" type="checkbox"> Suavizar curva</label>
+      </div>
+    </details>
+
+    <!-- Textos do chart + logo (sempre) -->
+    <details data-sec="textos" open>
+      <summary>Textos e marca</summary>
+      <div class="body">
+        <div class="labelrow">
+          <label class="field">Título<input id="title" type="text"></label>
+          <button type="button" class="lblswitch" id="showTitle" role="switch" aria-checked="false" title="Mostrar no gráfico"></button>
+        </div>
+        <div class="labelrow">
+          <label class="field">Subtítulo<input id="subtitle" type="text"></label>
+          <button type="button" class="lblswitch" id="showSubtitle" role="switch" aria-checked="false" title="Mostrar no gráfico"></button>
+        </div>
+        <div class="labelrow">
+          <label class="field">Fonte do dado<input id="source" type="text" placeholder="Fonte: Glassnode • jul/2026"></label>
+          <button type="button" class="lblswitch" id="showSource" role="switch" aria-checked="false" title="Mostrar no gráfico"></button>
+        </div>
+        <div class="field"><span class="fieldtitle">Logo da Paradigma</span>
+          <div class="logopick" id="wmPicker">
+            <button type="button" data-logo="none" aria-pressed="true" title="Nenhum"><svg viewBox="0 0 16 16" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><circle cx="8" cy="8" r="5.6"/><line x1="4" y1="12" x2="12" y2="4"/></svg></button>
+            <button type="button" data-logo="icone" title="Ícone"><span>Ícone</span></button>
+            <button type="button" data-logo="full" title="Completo"><span>Completo</span></button>
+            <button type="button" data-logo="nome" title="Nome"><span>Nome</span></button>
+          </div>
+        </div>
+        <div class="grid2" id="wmOpts" hidden>
+          <label class="field">Posição
+            <select id="wmPos">
+              <option value="footer">Rodapé (opaco)</option>
+              <option value="header">Cabeçalho (opaco)</option>
+              <option value="center">Centro (marca d'água)</option>
+            </select>
+          </label>
+          <label class="field">Cor do logo
+            <button type="button" class="colorfield" id="wmColor" title="Escolher cor do logo"></button>
+          </label>
+          <label class="field" id="wmRegionField">Região
+            <select id="wmRegion">
+              <option value="externo">Externo ao gráfico</option>
+              <option value="interno">Interno ao gráfico</option>
+            </select>
+          </label>
+          <label class="field" id="wmAlignField">Lado
+            <select id="wmAlign">
+              <option value="right">Direita</option>
+              <option value="left">Esquerda</option>
+            </select>
+          </label>
+          <label class="field"><span class="field-row">Opacidade <span class="field-val"><span id="wmOpVal">100%</span><button type="button" class="resetbtn" id="wmOpReset" title="Redefinir opacidade">↺</button></span></span>
+            <input type="range" id="wmOpacity" min="0" max="100" value="100" data-snaps="0,10,25,50,75,100">
+          </label>
+          <label class="field"><span class="field-row">Escala <span class="field-val"><span id="wmScaleVal">1×</span><button type="button" class="resetbtn" id="wmScaleReset" title="Redefinir para 1×">↺</button></span></span>
+            <input type="range" id="wmScale" min="40" max="260" value="100" data-snaps="40,70,100,150,200,260" data-edit-scale="0.01">
+          </label>
+        </div>
+      </div>
+    </details>
+
+    <!-- Tema, tipografia e tamanho do export -->
+    <details data-sec="canvas">
+      <summary>Canvas</summary>
+      <div class="body">
+        <div class="field">Tema
+          <div class="segment" id="themeSeg" role="tablist">
+            <button type="button" data-theme="light" aria-selected="true">Claro</button>
+            <button type="button" data-theme="dark" aria-selected="false">Escuro</button>
+          </div>
+        </div>
+        <label class="field">Escala da fonte <span id="fsVal"></span><input id="fontScale" type="range" min=".7" max="1.6" step=".05" data-snaps="0.7,1,1.15,1.3,1.45,1.6"></label>
+        <label class="toggle"><input id="transparent" type="checkbox"> Fundo transparente</label>
+        <div class="grid2">
+          <label class="field">Largura<input id="width" type="number" step="20"></label>
+          <label class="field">Altura<input id="height" type="number" step="20"></label>
+        </div>
+      </div>
+    </details>
+    </div><!-- /.pane customizar -->
+
+    </div><!-- /.sidebar-panel -->
+  </aside>
+
+  <section class="stage">
+    <div class="canvas">
+      <div class="framewrap">
+        <div class="frame" id="out"></div>
+        <img id="ghost" alt="Imagem original sobreposta" hidden>
+        <div id="editLayer"></div>
+        <div id="dragTip" hidden></div>
+      </div>
+    </div>
+    <div id="iaOverlay" hidden>
+      <div class="ia-card">
+        <div class="ia-spinner" aria-hidden="true"></div>
+        <p class="ia-title">Lendo o gráfico com o Claude…</p>
+        <p class="ia-sub" id="iaTimer">pode levar de 20&nbsp;s a 1&nbsp;min</p>
+        <button id="iaClose" hidden>Fechar</button>
+      </div>
+    </div>
+    <div class="bar">
+      <button type="button" id="editToggle">Editar</button>
+      <span class="sep"></span>
+      <label class="toggle">PNG em <select id="scale"><option>1</option><option selected>2</option><option>3</option><option>4</option></select>×</label>
+      <span class="hint" id="dims"></span>
+      <label class="toggle" id="ghostCtl" hidden title="Sobrepõe a imagem original pra você comparar na mão">
+        <input type="checkbox" id="ghostOn"> Sobrepor original
+        <input type="range" id="ghostOp" min="10" max="90" value="45" data-snaps="10,25,45,50,75,90">
+        <span class="hint" id="ghostVal">45%</span>
+      </label>
+      <button id="ghostMove" class="iconbtn" hidden title="Ajustar a sobreposição na mão (arrastar move · roda escala · 2 cliques reseta)">✥ Ajustar</button>
+      <span class="hint" id="status"></span>
+    </div>
+  </section>
+</main>
+
+
+<input id="fileIA" type="file" accept="image/*" hidden>
+
+<!-- chat flutuante com a IA da extração: FAB abre, botão – minimiza -->
+<button id="iaFab" hidden title="Conversar com a IA da extração" aria-label="Conversar com a IA da extração">
+  <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-8.5 8.5 8.5 8.5 0 0 1-3.9-.9L3 21l1.9-5.6A8.5 8.5 0 1 1 21 11.5z"/></svg>
+</button>
+<div id="iaPanel" hidden role="dialog" aria-label="Chat com a IA da extração">
+  <div class="ia-head">
+    <span>IA da extração <span class="hint">— ainda vê a imagem</span></span>
+    <button id="iaMin" title="Minimizar" aria-label="Minimizar">–</button>
+  </div>
+  <div id="iaLog"></div>
+  <div class="ia-foot">
+    <input id="iaMsg" type="text" placeholder="ex.: o valor de março é 55 mil">
+    <button id="iaSend" class="primary">Enviar</button>
+  </div>
+</div>
+
+<script type="module" src="graficos.js"></script>
+</body>
+</html>
