@@ -22,7 +22,7 @@ const ICO = {
 };
 
 /** @type {AppNavItem[]} */
-export const APP_NAV_ITEMS = [
+export const APP_NAV_ITEMS_ALL = [
   { id: 'index', href: 'index.html', label: 'Início', icon: ICO.index },
   { id: 'graficos', href: 'graficos.html', label: 'Gráficos', icon: ICO.graficos },
   { id: 'diagramacao', href: 'diagramacao.html', label: 'Diagramador', icon: ICO.diagramacao },
@@ -30,6 +30,8 @@ export const APP_NAV_ITEMS = [
   { id: 'stories', href: 'stories.html', label: 'Criador de Stories', icon: ICO.stories },
   { id: 'ui-catalog', href: 'ui/catalog.html', label: 'UI Catalog', icon: ICO['ui-catalog'] },
 ];
+// versão estática: só a página publicada aqui
+export const APP_NAV_ITEMS = APP_NAV_ITEMS_ALL.filter((it) => it.id === 'graficos');
 
 const CHEV = `<svg class="app-nav-chev" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M3 4.5L6 7.5L9 4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 

@@ -524,23 +524,24 @@
 
     <div class="pane sb-main" data-pane="importar">
     <details data-sec="dados" open>
-      <summary class="sum-info">Importar dados<span class="sum-trail"><span class="sec-badge">Beta</span><button type="button" class="infoicon" data-tip="Imagem — a IA estima eixos e valores a partir dos pixels; confira e ajuste arrastando os pontos.&#10;Corretora — só Binance e Hyperliquid (API pública, sem chave); na Hyperliquid, mercado com prefixo do dex usa o formato xyz:CL, cash:WTI.&#10;HTML — cole o markup do gráfico (o navegador não lê outros sites). DefiLlama aceita URL (API). Sparkline precisa das datas das pontas." aria-label="Limitações das opções de importação"></button></span></summary>
+      <summary class="sum-info">Importar dados<span class="sum-trail"><span class="sec-badge">Beta</span><button type="button" class="infoicon" data-tip="Imagem — leitura por pixel no navegador (linha ou barras); você calibra o eixo Y e confere a prévia.&#10;Corretora e DefiLlama — indisponíveis na versão estática (precisam do servidor local).&#10;HTML — cole o markup do gráfico (o navegador não lê outros sites). DefiLlama aceita URL (API). Sparkline precisa das datas das pontas." aria-label="Limitações das opções de importação"></button></span></summary>
       <div class="body">
-        <div class="segment cols-3" id="dataSegment" role="tablist">
+        <div class="segment cols-2" id="dataSegment" role="tablist">
           <button data-seg="imagem" aria-selected="true">Imagem</button>
-          <button data-seg="corretora" aria-selected="false">Corretora</button>
+          <button data-seg="corretora" aria-selected="false" hidden>Corretora</button>
           <button data-seg="html" aria-selected="false">HTML</button>
         </div>
 
         <div class="pane" data-pane="imagem">
           <div class="body">
             <button id="btnIA" class="primary">Converter imagem em gráfico…</button>
-            <p class="hint" id="iaHint">Escolha uma imagem de gráfico — o Claude lê o eixo e os dados e monta o gráfico no padrão da casa. Depois <b>arraste os pontos (ou o topo das barras)</b> no gráfico à direita pra ajustar.</p>
+            <p class="hint" id="iaHint">Escolha (ou cole com ⌘V / Ctrl+V) uma imagem de gráfico de linha ou barras. A leitura é feita por pixel, no seu navegador: você confirma as cores das séries e a escala do eixo Y, confere a prévia e os dados vão pra tabela no padrão da casa. Depois <b>arraste os pontos (ou o topo das barras)</b> pra ajustar.</p>
           </div>
         </div>
 
         <div class="pane" data-pane="corretora" hidden>
           <div class="body">
+            <p class="hint"><b>Indisponível nesta versão estática:</b> buscar candles de corretora precisa do servidor local.</p>
             <div class="grid2">
               <label class="field">Corretora
                 <select id="cdVenue"><option value="binance">Binance</option><option value="hyperliquid">Hyperliquid</option></select>
@@ -582,7 +583,7 @@
         <div class="pane" data-pane="html" hidden>
           <div class="body">
             <label class="field">
-              Cole o HTML do elemento (no site: botão-direito no gráfico → Inspecionar → botão-direito no nó → Copy → Copy element) — ou a URL do DefiLlama
+              Cole o HTML do elemento (no site: botão-direito no gráfico → Inspecionar → botão-direito no nó → Copy → Copy element) 
               <textarea id="htmlIn" spellcheck="false" placeholder="&lt;div data-chart-id=…&gt; … &lt;/div&gt;  ·  ou  https://defillama.com/protocol/lighter"></textarea>
             </label>
             <button id="btnImportHtml">Importar</button>
@@ -596,7 +597,7 @@
             </div>
             <button id="btnDatarX">Datar o eixo X</button>
             <p class="hint">SVG (recharts e afins): lê a curva e os eixos e reconstrói os valores reais — sem IA, na hora. O navegador não lê o HTML de outro domínio, por isso é colar o markup, não o link.</p>
-            <p class="hint"><b>DefiLlama</b> é exceção: o gráfico dele é <code>&lt;canvas&gt;</code> (o dado só existe como pixel), então aí cole a <b>URL</b> — ou o <code>&lt;iframe&gt;</code> do "Embed Chart" — que eu busco os números pela API deles, exatos. As métricas ligadas na URL (TVL, open interest, fees) vêm juntas.</p>
+            <p class="hint"><b>DefiLlama:</b> indisponível nesta versão estática (a busca pela URL precisa do servidor local).</p>
             <p class="hint">Sparkline de card não traz data nenhuma no HTML. Preencha as duas pontas da janela e os pontos são datados em passo constante (aplica junto no Importar).</p>
           </div>
         </div>

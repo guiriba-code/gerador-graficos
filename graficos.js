@@ -18,8 +18,18 @@ import { logoPickSvg } from './logos.js';      // SVG do logo pro picker (Fase 0
 import { enhanceAll } from './range-snap.js';  // snap points em todos os range com data-snaps
 import { initFeedback } from './feedback.js';
 import { initAppNav } from './app-nav.js';
+import { openLocalConverter } from './conversor-local.js';
 
 const $ = (id) => document.getElementById(id);
+// Versão estática (GitHub Pages): não há servidor local. Rotas /api/* respondem
+// com uma mensagem clara em português em vez de falhar.
+const MSG_SEM_SERVIDOR = 'Indisponível nesta versão estática (GitHub Pages): este recurso precisa do servidor local da ferramenta original.';
+{
+  const _fetch = window.fetch.bind(window);
+  window.fetch = (u, o) => (typeof u === 'string' && u.startsWith('/api/')
+    ? Promise.resolve(new Response(JSON.stringify({ error: MSG_SEM_SERVIDOR, rodando: false }), { status: 503, headers: { 'content-type': 'application/json' } }))
+    : _fetch(u, o));
+}
 const out = $('out');
 let chartMeta = {};   // geometria do último render, pra arrastar pontos/barras
 let editMode = false; // modo edição: alças visíveis, escala fixa, add/remove
@@ -1437,55 +1447,32 @@ async function fileToImageData(file) {
 }
 
 async function convertImage(file) {
-  if (!file.type.startsWith('image/')) return flash('Mande uma imagem (PNG/JPG).', true);
-  setReference(file);                      // já deixa a original pronta pra sobrepor
-  $('btnIA').disabled = true;
-  const timer = iaShow();
+  if (!file?.type?.startsWith('image/')) return flash('Mande uma imagem (PNG/JPG).', true);
   try {
-    const r = await fetch('/api/convert', { method: 'POST', headers: { 'content-type': file.type || 'image/png' }, body: file });
-    const ct = r.headers.get('content-type') || '';
-    if (!ct.includes('json')) throw new Error('Servidor sem a rota de IA. Rode <code>node server.mjs</code> (não o http.server do Python).');
-    const j = await r.json();
-    if (!r.ok || j.error) throw new Error(j.error || `HTTP ${r.status}`);
-    let specIn = j.spec, rep = null;
-    if (specIn.mode === 'pixels') {
-      // o LLM só leu o texto (ticks, título); os DADOS saem da leitura por pixel
-      const built = buildSpecFromImage(await fileToImageData(file), specIn);
-      specIn = built.spec; ghostPlotRect = built.plotRect; rep = built.report;
-    } else {
-      ghostPlotRect = specIn.plotRect || null;   // pra alinhar a sobreposição na mesma escala
-    }
-    delete specIn.plotRect;                      // não são campos da spec do renderer
-    delete specIn.mode;
-    if (Array.isArray(specIn.labels)) specIn.labels = specIn.labels.map(capFirst);   // meses com inicial maiúscula
-    // sankey não tem série nem eixo: o dado são as ligações que a IA leu das
-    // fitas. Sem isso a spec chegava com `links` mas era tratada como cartesiana.
-    const ehSankey = specIn.type === 'sankey' && Array.isArray(specIn.links);
-    spec = { ...structuredClone(DEFAULTS), ...specIn };
-    if (!ehSankey && spec.series?.length) spec.x.every = Math.max(spec.x.every || 1, Math.ceil((spec.labels?.length || spec.series[0].data.length) / 12));
-    fillControls(); buildSeries(); sync();
-    /* Sobreposição da original pra conferir — MENOS no sankey: lá o desenho é
-     * recalculado do zero (colunas, ordem dos nós, altura), então a imagem
-     * nunca alinha com o resultado e só atrapalha a leitura. `setReference`
-     * liga o ghost lá em cima, então aqui é preciso DESLIGAR, não só não ligar. */
-    $('ghostOn').checked = !ehSankey; applyGhost();
-    $('iaOverlay').hidden = true;
-    if (!ehSankey) enterEdit();                  // sankey: o modo edição move nó, não ponto
-    pushHistory();
-    iaSession = j.sessionId || null;             // habilita o chat com a mesma sessão
-    if (iaSession) showChat('Extração pronta. Me peça pra corrigir algum dado, rótulo ou o título — reexamino a imagem.');
-    else hideChat();
-    flash(`Pronto — ${(j.ms / 1000).toFixed(0)}s${j.cost ? `, ~US$ ${j.cost.toFixed(3)}` : ''}`
-      + (rep ? ` · ${rep.pontos} pontos por pixel, cobertura ${rep.series[0].cobertura}%` : '')
-      + (ehSankey ? ` · ${spec.links.length} fluxos. Confira os valores na caixa de texto.`
-        : '. Arraste os pontos pra ajustar.'));
-  } catch (err) {
-    iaError(/Failed to fetch|NetworkError/.test(err.message)
-      ? 'Servidor de IA fora do ar. No terminal, rode:<br><code>node server.mjs</code>' : err.message);
-  } finally {
-    clearInterval(timer); $('btnIA').disabled = false;
-  }
+    await openLocalConverter(file, (r) => {
+      setReference(file);
+      const rows = [['', ...r.series.map((x) => x.name)], ...r.labels.map((l, i) => [capFirst(String(l)), ...r.series.map((x) => (x.data[i] == null ? '' : String(x.data[i])))])];
+      spec = { ...structuredClone(DEFAULTS), title: spec.title, subtitle: spec.subtitle, source: spec.source, type: r.type, series: [] };
+      spec.y.min = null; spec.y.max = null;
+      if (!applyMatrixToSpec(rows)) return flash('Não consegui montar a tabela com esses dados.', true);
+      spec.x.every = Math.max(1, Math.ceil(spec.labels.length / 12));
+      ghostPlotRect = r.plotRect || null;
+      clearIaSession();
+      fillControls(); buildSeries(); sync();
+      $('ghostOn').checked = true; applyGhost();
+      enterEdit(); pushHistory();
+      flash(`Pronto — ${r.labels.length} pontos × ${r.series.length} série(s), lidos por pixel. Arraste os pontos pra ajustar.`);
+    });
+  } catch (err) { flash('Não consegui abrir a imagem: ' + err.message, true); }
 }
+// colar imagem (⌘V / Ctrl+V) em qualquer lugar fora de campos de texto abre o conversor
+addEventListener('paste', (e) => {
+  const f = [...(e.clipboardData?.files || [])].find((x) => x.type.startsWith('image/'));
+  if (!f) return;
+  const t = e.target;
+  if (t?.closest?.('textarea, input, [contenteditable="true"], td') && !t.closest('#cvlDlg')) return;
+  e.preventDefault(); convertImage(f);
+});
 
 // ── chat flutuante com a IA da extração: continua a MESMA sessão ──────────────
 let iaSession = null, refining = false;
